@@ -1,0 +1,140 @@
+---
+# Create a test namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pruner-test
+---
+# Create an unused ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unused-configmap
+  namespace: pruner-test
+data:
+  test.conf: |
+    # This is an unused ConfigMap
+    key1=value1
+    key2=value2
+---
+# Create a used ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: used-configmap
+  namespace: pruner-test
+data:
+  app.conf: |
+    # This ConfigMap is used by a Pod
+    setting=enabled
+---
+# Create an unused Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: unused-secret
+  namespace: pruner-test
+type: Opaque
+data:
+  username: YWRtaW4=  # admin
+  password: cGFzc3dvcmQxMjM=  # password123
+---
+# Create a used Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: used-secret
+  namespace: pruner-test
+type: Opaque
+data:
+  api-key: c2VjcmV0LWtleQ==  # secret-key
+---
+# Create an unused PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: unused-pvc
+  namespace: pruner-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Create a used PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: used-pvc
+  namespace: pruner-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Create a Pod that will complete (for testing completed pod pruning)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: completed-pod
+  namespace: pruner-test
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo "Task completed" && sleep 5']
+---
+# Create a Job that will complete (for testing completed job pruning)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: completed-job
+  namespace: pruner-test
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: busybox
+        image: busybox:1.28
+        command: ['sh', '-c', 'echo "Job completed" && sleep 5']
+  backoffLimit: 0
+---
+# Create a Pod that uses the ConfigMap and Secret
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: pruner-test
+spec:
+  containers:
+  - name: test-container
+    image: nginx:1.19
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/config
+    - name: data-volume
+      mountPath: /data
+    env:
+    - name: API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: used-secret
+          key: api-key
+  volumes:
+  - name: config-volume
+    configMap:
+      name: used-configmap
+  - name: data-volume
+    persistentVolumeClaim:
+      claimName: used-pvc
+---
+# Create an empty namespace for testing namespace pruning
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: empty-namespace
